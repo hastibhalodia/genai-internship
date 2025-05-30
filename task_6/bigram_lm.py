@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 # Load and prepare text
-with open("tiny-shakespeare.txt", "r", encoding="utf-8") as f:
+with open("tiny-shakespeare.txt", "r") as f:
     text = f.read()
 
 # Character-level vocabulary
