@@ -12,10 +12,9 @@ learning_rate = 1e-2
 device = "cuda" if torch.cuda.is_available() else "cpu"
 eval_iters = 200
 
-# Load data using absolute path relative to this script
+# Load data
 script_dir = os.path.dirname(os.path.abspath(__file__))
 file_path = os.path.join(script_dir, "tiny-shakespeare.txt")
-
 with open(file_path, "r", encoding="utf-8") as f:
     text = f.read()
 
@@ -40,31 +39,28 @@ train_data = data[:n]
 val_data = data[n:]
 
 
-# Data loader
-def get_batch(split):
-    data = train_data if split == "train" else val_data
-    ix = torch.randint(len(data) - block_size, (batch_size,))
-    x = torch.stack([data[i : i + block_size] for i in ix])
-    y = torch.stack([data[i + 1 : i + block_size + 1] for i in ix])
+def get_batch(data_source, batch_size, block_size, device):
+    ix = torch.randint(len(data_source) - block_size, (batch_size,))
+    x = torch.stack([data_source[i:i + block_size] for i in ix])
+    y = torch.stack([data_source[i + 1:i + block_size + 1] for i in ix])
     return x.to(device), y.to(device)
 
 
 @torch.no_grad()
-def estimate_loss():
+def estimate_loss(model, train_data, val_data, batch_size, block_size, device):
     out = {}
     model.eval()
-    for split in ["train", "val"]:
+    for split, data in [("train", train_data), ("val", val_data)]:
         losses = torch.zeros(eval_iters)
         for k in range(eval_iters):
-            X, Y = get_batch(split)
-            logits, loss = model(X, Y)
+            X, Y = get_batch(data, batch_size, block_size, device)
+            _, loss = model(X, Y)
             losses[k] = loss.item()
         out[split] = losses.mean()
     model.train()
     return out
 
 
-# Bigram Model
 class BigramLanguageModel(nn.Module):
     def __init__(self, vocab_size):
         super().__init__()
@@ -91,28 +87,22 @@ class BigramLanguageModel(nn.Module):
         return idx
 
 
-model = BigramLanguageModel(vocab_size)
-model.to(device)
+if __name__ == "__main__":
+    model = BigramLanguageModel(vocab_size).to(device)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
+    loss_history = []
 
-# Training loop
-optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
-loss_history = []
+    for iter in range(max_iters):
+        if iter % eval_interval == 0:
+            losses = estimate_loss(model, train_data, val_data, batch_size, block_size, device)
+            print(f"step {iter}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}")
+            loss_history.append((iter, losses["train"], losses["val"]))
 
-for iter in range(max_iters):
-    if iter % eval_interval == 0:
-        losses = estimate_loss()
-        print(
-            f"step {iter}: train loss {losses['train']:.4f}, "
-            f"val loss {losses['val']:.4f}"
-        )
-        loss_history.append((iter, losses["train"], losses["val"]))
+        xb, yb = get_batch(train_data, batch_size, block_size, device)
+        _, loss = model(xb, yb)
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
 
-    xb, yb = get_batch("train")
-    logits, loss = model(xb, yb)
-    optimizer.zero_grad()
-    loss.backward()
-    optimizer.step()
-
-# Save model and losses
-torch.save(model.state_dict(), "bigram_model.pth")
-torch.save(loss_history, "loss_history.pth")
+    torch.save(model.state_dict(), "bigram_model.pth")
+    torch.save(loss_history, "loss_history.pth")
