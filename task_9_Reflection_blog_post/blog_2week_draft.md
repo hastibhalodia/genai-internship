@@ -1,4 +1,4 @@
-# Week 2 Learnings — From Bigram to GPT-2
+# 2 Week Learnings — From Bigram to GPT-2
 
 This week was all about language models — how they work and how they’ve evolved.
 
